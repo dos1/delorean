@@ -1,0 +1,276 @@
+#!/usr/bin/python3.4
+
+import logging
+import subprocess
+import socket, ssl
+from threading import Thread, Semaphore
+import xml.etree.ElementTree as ET
+import xml.dom.minidom
+from xml.dom import expatbuilder
+import code
+
+class bcolors:
+    HEADER = '\033[95m'
+    OKBLUE = '\033[94m'
+    OKGREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
+
+
+def getInactivity():
+    try:
+        with open("/tmp/delorean-inactivity", "r") as file:
+            data = file.read()
+        #print(data)
+        if data == "off\n":
+            return True
+    except Exception as e:
+        return None
+
+    return False
+
+def DOM2ET(domelem):
+    """Converts a DOM node object of type element to an ElementTree Element.
+
+    domelem: DOM node object of type element (domelem.nodeType == domelem.ELEMENT_NODE)
+
+    returns an 'equivalent' ElementTree Element
+    """
+    # make some local variables for fast processing
+    tyCDATA = domelem.CDATA_SECTION_NODE
+    tyTEXT = domelem.TEXT_NODE
+    tyPI = domelem.PROCESSING_INSTRUCTION_NODE
+    tyCOMMENT = domelem.COMMENT_NODE
+    tyELEMENT = domelem.ELEMENT_NODE
+    # calculate the attributes of the domelem
+    attribs = domelem.attributes
+    attrs = dict((x.name, x.value) for x in (attribs.item(i) for i in range(attribs.length)))
+    # build the ET Element
+    etelem = ET.Element(domelem.tagName, attrs)
+    last = None # to differentiate between 'text' and 'tail'
+    for node in domelem.childNodes:
+        nodeType = node.nodeType
+        if (tyTEXT == nodeType or tyCDATA == nodeType) and node.data:
+            data = node.data
+            if last is None: etelem.text = etelem.text + data if etelem.text else data
+            else: last.tail = last.tail + data if last.tail else data
+        elif tyELEMENT == nodeType:
+            last = DOM2ET(node)
+            etelem.append(last)
+        elif tyCOMMENT == nodeType:
+            last = ET.Comment(node.data)
+            etelem.append(last)
+        elif tyPI == nodeType:
+            last = ET.ProcessingInstruction(node.target, node.data)
+            etelem.append(last)
+
+    return etelem
+
+enableStuff = False
+inactivity = None
+bound = False
+
+def deloreanify(document, local):
+    global enableStuff
+    root = DOM2ET(document.documentElement)
+    # enable stuff
+    bind = root.find("iq[@type='result']/bind")
+    if bind and not local:
+        enableStuff = True
+    # decarbonify
+    unwrapped = root.find("message/received/forwarded")
+    if unwrapped and not local:
+        return unwrapped
+    # suppress notifications on sent carbons
+    unwrapped = root.find("message/sent/forwarded/message")
+    if unwrapped and not local:
+        with open("/tmp/delorean-suppression", "w") as file:
+            print("SUPPRESSING", unwrapped.get("to"))
+            file.write(unwrapped.get("to"))
+    # clear disco#items
+    disco = root.find("iq[@type='result']/query[@xmlns='http://jabber.org/protocol/disco#items']")
+    if disco and not local:
+        disco.clear()
+        disco.set('xmlns', 'http://jabber.org/protocol/disco#items')
+    # override caps version in presence
+    caps = root.find("presence/c[@ext='pmuc-v1']")
+    if caps is not None and local:
+        print("CAPS")
+        caps.clear()
+        caps.set('ext', 'pmuc-v1 voice-v1 video-v1')
+        caps.set('xmlns', 'http://jabber.org/protocol/caps')
+        caps.set('ver', '+dRQdpBhZRo91VUyt85Ev987yf8=')
+        caps.set('node', 'http://telepathy.freedesktop.org/caps')
+        caps.set('hash', 'sha-1')
+    # message delivery receipts
+    receipts = root.find("message[request]")
+    if receipts and not local:
+        if receipts.find("request[@xmlns='urn:xmpp:receipts']") is not None:
+            print("RECEIPT")
+            receipt = ET.Element("message", {'to': receipts.get('from'), 'id': receipts.get('id', 'empty')+'-delorean-receipt'})
+            receipt.append(ET.Element("received", {'id': receipts.get('id', 'empty'), 'xmlns': 'urn:xmpp:receipts'}))
+            serverfd.send(ET.tostring(receipt, encoding="unicode").encode("utf-8")) 
+    return root
+
+def fixed_writexml(self, writer, indent="", addindent="", newl=""):
+    # indent = current indentation
+    # addindent = indentation to add to higher levels
+    # newl = newline string
+    #print(self.tagName)
+    if self.tagName == "delorean:fakeroot":
+        writer.seek(0, 0)
+        writer.truncate(0)
+        for node in self.childNodes:
+            node.writexml(writer, indent, addindent, newl)
+        return
+    writer.write(indent+"<" + self.tagName)
+
+    attrs = self._get_attributes()
+    a_names = attrs.keys()
+
+    for a_name in a_names:
+        writer.write(" %s=\"" % a_name)
+        xml.dom.minidom._write_data(writer, attrs[a_name].value)
+        writer.write("\"")
+    if self.childNodes:
+        if len(self.childNodes) == 1 \
+          and self.childNodes[0].nodeType == xml.dom.minidom.Node.TEXT_NODE:
+            writer.write(">")
+            self.childNodes[0].writexml(writer, "", "", "")
+            writer.write("</%s>%s" % (self.tagName, newl))
+            return
+        writer.write(">%s"%(newl))
+        for node in self.childNodes:
+            node.writexml(writer,indent+addindent,addindent,newl)
+        writer.write("%s</%s>%s" % (indent,self.tagName,newl))
+    else:
+        writer.write("/>%s"%(newl))
+# replace minidom's function with ours
+xml.dom.minidom.Element.writexml = fixed_writexml
+
+
+class PipeThread(Thread):
+    pipes = []
+
+    def __init__(self, source, sink, local, semaphore):
+        Thread.__init__(self)
+        self.source = source
+        self.sink = sink
+        self.local = local
+        self.semaphore = semaphore
+
+        logging.info('new pipe thread %s (%s -> %s)' % \
+                     (self, source.getpeername(), sink.getpeername()))
+        PipeThread.pipes.append(self)
+        logging.info('%s pipes active' % len(PipeThread.pipes))
+
+    def run(self):
+        while True:
+            try:
+                data = self.source.recv(16384)
+                self.semaphore.acquire()
+                if not data:
+                    break
+                while len(data) % 16384 == 0:
+                    data += self.source.recv(16384)
+                print(bcolors.HEADER + "===============" + ("TO" if self.local else "FROM") + "===============" + bcolors.ENDC)
+                print(len(data))
+                try:
+                    txt = data.decode("utf-8")
+                    node = expatbuilder.parseString("<delorean:fakeroot>" + txt + "</delorean:fakeroot>", False)
+                    if txt:
+                        print((bcolors.OKBLUE if self.local else bcolors.OKGREEN) + node.toprettyxml() + bcolors.ENDC)
+                    node = deloreanify(node, self.local)
+                    newdata = " "
+                    for child in node:
+                        newdata += ET.tostring(child, encoding="unicode")
+                    #print(newdata)
+                except Exception as e:
+                    print(bcolors.WARNING, "PARSE ERROR", data, e, bcolors.ENDC)
+                    newdata = data.decode("utf-8")
+                self.semaphore.release()
+                newdata = newdata.encode("utf-8")
+                sent = self.sink.send(newdata)
+                if sent != len(newdata):
+                    print(bcolors.FAIL, "DID NOT SEND ALL!!!", sent, len(newdata), data, newdata, bcolors.ENDC)
+                global enableStuff, inactivity, bound
+                if enableStuff and self.local:
+                    enableStuff = False
+                    bound = True
+                    self.sink.send("<iq xmlns='jabber:client' id='delorean-carbonify' type='set'><enable xmlns='urn:xmpp:carbons:2'/></iq>".encode("utf-8"))
+                    print("Carbonified!")
+                    serverfd.send((("<inactive" if inactivity else "<active") + " xmlns='urn:xmpp:csi:0' />").encode("utf-8"))
+                    print("inactivity", inactivity)
+            except Exception as e:
+                logging.error(bcolors.FAIL + str(e) + bcolors.ENDC)
+                break
+        logging.info('%s terminating' % self)
+        self.sink.shutdown(socket.SHUT_WR)
+        PipeThread.pipes.remove(self)
+        logging.info('%s pipes active' % len(PipeThread.pipes))
+
+
+serverfd = None
+localfd = None
+
+class Relay(Thread):
+    def __init__(self, port, dst_host, dst_port):
+        Thread.__init__(self)
+        logging.info('relaying: localhost:%s -> %s:%s' % (port, dst_host, dst_port))
+        self.dst_host = dst_host
+        self.dst_port = dst_port
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.sock.bind(('127.0.0.1', port))
+        self.sock.listen(1)
+
+    def run(self):
+        global serverfd, localfd, bound
+        while True:
+            newsock, address = self.sock.accept()
+            logging.info('new session for %s %s' % address)
+            context = ssl.create_default_context(purpose=ssl.Purpose.CLIENT_AUTH)
+            ###context.options = ssl.OP_NO_SSLv2 | ssl.OP_NO_SSLv3 | ssl.OP_CIPHER_SERVER_PREFERENCE | ssl.OP_SINGLE_DH_USE | ssl.OP_SINGLE_ECDH_USE
+            #context.verify_mode = ssl.CERT_REQUIRED
+            #context.check_hostname = True
+            #context.load_default_certs()
+            # TODO: load Let's Encrypt certs and uncomment verification
+            fwd = context.wrap_socket(socket.socket(socket.AF_INET, socket.SOCK_STREAM), server_hostname=self.dst_host)
+            fwd.connect((self.dst_host, self.dst_port))
+            semaphore = Semaphore()
+            bound = False
+            PipeThread(newsock, fwd, True, semaphore).start()
+            PipeThread(fwd, newsock, False, semaphore).start()
+            serverfd = fwd
+            localfd = newsock
+            # TODO: block; support only one connection at once
+
+
+if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
+    logging.info('starting relay')
+
+    subprocess.Popen(["./delorean-suppressor"])
+    subprocess.Popen(["./delorean-inactivity"])
+
+    import sys
+
+    if len(sys.argv) >= 4:
+      port = int(sys.argv[1])
+      dst_host = sys.argv[2]
+      dst_port = int(sys.argv[3])
+    else:
+      print("Usage: " + sys.argv[0] + " local-port remote-host remote-port")
+
+    Relay(port, dst_host, dst_port).start()
+
+    while True:
+        newInactivity = getInactivity()
+        if inactivity != newInactivity and bound:
+            inactivity = newInactivity
+            print("inactivity", inactivity)
+            serverfd.send((("<inactive" if inactivity else "<active") + " xmlns='urn:xmpp:csi:0' />").encode("utf-8"))
+    #code.interact(local=locals())

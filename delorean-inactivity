@@ -1,0 +1,13 @@
+#!/bin/bash
+while read -r line
+do
+  case $line in string*)
+    if [ "$line" == 'string "off"' ]; then
+      (mc-tool show gabble/jabber/dos_40dosowisko_2enet0 | grep "Requested: offline") || mc-tool request gabble/jabber/dos_40dosowisko_2enet0 Away "Nokia N900"
+      echo "off" > /tmp/delorean-inactivity
+    else
+      (mc-tool show gabble/jabber/dos_40dosowisko_2enet0 | grep "Requested: offline") || mc-tool request gabble/jabber/dos_40dosowisko_2enet0 Online "Nokia N900"
+      echo "on" > /tmp/delorean-inactivity
+    fi
+  esac
+done < <(dbus-monitor  --system "type='signal',path='/com/nokia/mce/signal',interface='com.nokia.mce.signal',member='display_status_ind'")
