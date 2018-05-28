@@ -5,7 +5,7 @@ Basically, DeLorean taps in-between your rusty, old XMPP client (in my case, Mae
 
 It's dirty, hacky, smelly and full of weird shit thanks to newest engineering techniques such as *Copy'n'Paste Driven Development* and a carefully curated set of the finest, most sensible requirements, such as "*I want it to run on Maemo but I'm too lazy to cross compile anything; oh crap everything here is so old let's just ducttape it*". But maybe it will become a beautiful swan someday, who knows.
 
-### Usage
+## Usage
 ```
 ./delorean local-port remote-host remote-port
 ```
@@ -16,7 +16,7 @@ You should also rewrite `delorean-suppressor` and `delorean-inactivity` to match
 
 You might also need to change the first line of `delorean` file to not depend on `python3.4`. And if you run it on Maemo, remember to install `python3.4`, `python-gobject` and `python-dbus` (in case you're now wondering, yes, those last two for Python 2.5, really).
 
-### Modernized stuff:
+## Modernized stuff:
 - XEP-0280: Message Carbons
   - Received carbons are unwrapped, so you can finally get incoming messages sent to your other resources.
   - Sent carbons are sadly still ignored, but when they arrive, you can suppress earlier notifications.
@@ -30,7 +30,7 @@ You might also need to change the first line of `delorean` file to not depend on
 - Caps version override
   - Telepathy on Maemo seems to be needlessly chatty about its presences, breaking caps cache for some clients, again causing unnecessary chattiness on login. As above, highly use-case specific, you might want to remove it.
 
-### TODO:
+## TODO:
 - XEP-0280: Message Carbons
   - Find a way to inject sent messages into Telepathy, so sent carbons can be nicely displayed in the conversation history.
 - XEP-0198: Stream Management
@@ -41,6 +41,8 @@ You might also need to change the first line of `delorean` file to not depend on
   - DeLorean could be used to inject HTTP uploads from some other component, like Maemo's share plugin.
 - XEP-0384: OMEMO Encryption
   - Because why not.
+
+## FAQ
 
 ### Damn this code is so horrible.
 
