@@ -43,15 +43,18 @@ def nf(bus, message):
       print(notifications)
 
 def suppress(*args):
+    global file
     buffer = os.read(file, 1024)
     jid = buffer.strip().split('/')[0]
     print(jid)
-    if not notifications.get(jid):
-      return True
-    for notif in notifications[jid]:
-      print(notif)
-      iface.CloseNotification(notif)
-    return True
+    if notifications.get(jid):
+      for notif in notifications[jid]:
+        print(notif)
+        iface.CloseNotification(notif)
+    os.close(file)
+    file = os.open("/tmp/delorean-suppression", os.O_RDONLY | os.O_NONBLOCK)
+    gobject.io_add_watch(file, gobject.IO_IN, suppress)
+    return False
 
 dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
 bus = dbus.SessionBus()
