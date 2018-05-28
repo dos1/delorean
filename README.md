@@ -6,7 +6,10 @@ Basically, DeLorean taps in-between your rusty, old XMPP client (in my case, Mae
 It's dirty, hacky, smelly and full of weird shit thanks to newest engineering techniques such as *Copy'n'Paste Driven Development* and a carefully curated set of the finest, most sensible requirements, such as "*I want it to run on Maemo but I'm too lazy to cross compile anything; oh crap everything here is so old let's just ducttape it*". But maybe it will become a beautiful swan someday, who knows.
 
 ### Usage
-`./delorean local-port remote-host remote-port`
+```
+./delorean local-port remote-host remote-port
+```
+
 Point DeLorean to your XMPP server's TLS port (usually 5223), then point your client to localhost and the `local-port` of your choice. Remember to disable encryption in your client - DeLorean will take care about it.
 
 You should also rewrite `delorean-suppressor` and `delorean-inactivity` to match your platform, unless you want to run it on Maemo. Oh, and make sure to run `mkfifo /tmp/delorean-suppression` and `mkfifo /tmp/delorean-inactivity` before.
