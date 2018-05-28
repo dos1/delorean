@@ -10,7 +10,7 @@ It's dirty, hacky, smelly and full of weird shit thanks to newest engineering te
 ./delorean local-port remote-host remote-port
 ```
 
-Point DeLorean to your XMPP server's TLS port (usually 5223), then point your client to localhost and the `local-port` of your choice. Remember to disable encryption in your client - DeLorean will take care about it.
+Point DeLorean to your XMPP server's TLS port (usually 5223), then point your client to localhost and the `local-port` of your choice. Remember to disable encryption in your client - DeLorean will take care about it. Well, not really, it won't validate the certificate, but there's commented out code for it, find it and uncomment.
 
 You should also rewrite `delorean-suppressor` and `delorean-inactivity` to match your platform, unless you want to run it on Maemo. Oh, and make sure to run `mkfifo /tmp/delorean-suppression` and `mkfifo /tmp/delorean-inactivity` before.
 
@@ -45,6 +45,10 @@ You might also need to change the first line of `delorean` file to not depend on
 ### Damn this code is so horrible.
 
 Yup! 
+
+### It ate my child!
+
+I didn't know it can do that, awesome!
 
 ### ...but I want to use/enhance/perform exorcisms on it anyway. Can I?
 
