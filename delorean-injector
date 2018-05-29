@@ -1,0 +1,48 @@
+#!/usr/bin/env python
+
+import dbus, gobject, os
+import dbus.mainloop.glib
+
+'''
+org.freedesktop.Notifications.NotificationClosed  /org/freedesktop/Notifications 
+'''
+
+dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
+bus = dbus.SessionBus()
+
+# MDBUS2> org.freedesktop.Telepathy.Connection.gabble.jabber.dos_40dosowisko_2enet_2fMaemo /org/freedesktop/Telepathy/Connection/gabble/jabber/dos_40dosowisko_2enet_2fMaemo org.freedesktop.Telepathy.Connection.Interface.Requests.EnsureChannel 
+
+mainloop = gobject.MainLoop()
+
+# \x19
+def sendMessage(*args):
+    global file
+    buffer = os.read(file, 1024)
+    (fulljid, message) = buffer.split('\x19')
+    jid = fulljid.strip().split('/')[0]
+    print(jid)
+
+    iface = dbus.Interface(bus.get_object('org.freedesktop.Telepathy.Connection.gabble.jabber.dos_40dosowisko_2enet_2fMaemo', '/org/freedesktop/Telepathy/Connection/gabble/jabber/dos_40dosowisko_2enet_2fMaemo'), 'org.freedesktop.Telepathy.Connection.Interface.Requests')
+    result = iface.EnsureChannel({"org.freedesktop.Telepathy.Channel.TargetHandleType": 1, "org.freedesktop.Telepathy.Channel.ChannelType": "org.freedesktop.Telepathy.Channel.Type.Text", "org.freedesktop.Telepathy.Channel.TargetID": jid})
+
+    #print(result)
+
+    channelId = result[1]
+    print(channelId)
+    channel = dbus.Interface(bus.get_object('org.freedesktop.Telepathy.Connection.gabble.jabber.dos_40dosowisko_2enet_2fMaemo', channelId), "org.freedesktop.Telepathy.Channel")
+    text = dbus.Interface(bus.get_object('org.freedesktop.Telepathy.Connection.gabble.jabber.dos_40dosowisko_2enet_2fMaemo', channelId), "org.freedesktop.Telepathy.Channel.Type.Text")
+    text.Send(2, message)
+
+    if result[0]:
+      channel.Close()
+      print("closed")
+
+    os.close(file)
+    file = os.open("/tmp/delorean-injection", os.O_RDONLY | os.O_NONBLOCK)
+    gobject.io_add_watch(file, gobject.IO_IN, sendMessage)
+    return False
+
+file = os.open("/tmp/delorean-injection", os.O_RDONLY | os.O_NONBLOCK)
+gobject.io_add_watch(file, gobject.IO_IN, sendMessage)
+
+mainloop.run()

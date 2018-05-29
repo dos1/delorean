@@ -12,15 +12,16 @@ It's dirty, hacky, smelly and full of weird shit thanks to newest engineering te
 
 Point DeLorean to your XMPP server's TLS port (usually 5223), then point your client to localhost and the `local-port` of your choice. Remember to disable encryption in your client - DeLorean will take care about it. Well, not really, it won't validate the certificate, but there's commented out code for it, find it and uncomment. You could also add TLS to the client side as well if you wanted.
 
-You should also rewrite `delorean-suppressor` and `delorean-inactivity` to match your platform, unless you want to run it on Maemo. There's also my Telepathy account and automatic status change hardcoded, you might probably want to adjust it. Oh, and make sure to run `mkfifo /tmp/delorean-suppression` and `mkfifo /tmp/delorean-inactivity` before.
+You should also rewrite `delorean-suppressor`, `delorean-injector` and `delorean-inactivity` to match your platform, unless you want to run it on Maemo. There's also my Telepathy account and automatic status change hardcoded, you might probably want to adjust it. Oh, and make sure to run `mkfifo /tmp/delorean-suppression`, `mkfifo /tmp/delorean-injection` and `mkfifo /tmp/delorean-inactivity` before.
 
 You might also need to change the first line of `delorean` file to not depend on `python3.4`. And if you run it on Maemo, remember to install `python3.4`, `python-gobject` and `python-dbus` (in case you're now wondering, yes, those last two for Python 2.5, really).
 
 ## Modernized stuff:
 - XEP-0280: Message Carbons
   - Received carbons are unwrapped, so you can finally get incoming messages sent to your other resources.
-  - Sent carbons are sadly still ignored, but when they arrive, you can suppress earlier notifications.
+  - Sent carbons are passed to external script (which, by defaults, injects them back into Telepathy); they also suppress earlier notifications.
     - This means you still get notifications for incoming messages on your DeLoreaned mobile while you're happily chatting on a PC, but at least the notification is cleared when you do anything with the conversation on PC, including marking it as read. Good enough for me!
+    - Default implementation makes DeLorean cut out any outgoing messages with type "normal", which is a hack for implementing outgoing carbons using Maemo's Telepathy (you can't send such message via its UI anyway). Depending on your use case you might want to remove it.
 - XEP-0352: Client State Indication
   - You can signalize whether your device is unused - for instance, phone being locked with its screen turned off - so the server won't send you useless presences eating the battery up until you turn on the screen back.
 - XEP-0184: Message Delivery Receipts

@@ -84,12 +84,26 @@ def deloreanify(document, local):
     unwrapped = root.find("message/received/forwarded")
     if unwrapped and not local:
         return unwrapped
-    # suppress notifications on sent carbons
+    # inject sent carbons and suppress notifications
     unwrapped = root.find("message/sent/forwarded/message")
     if unwrapped and not local:
         with open("/tmp/delorean-suppression", "w") as file:
             print("SUPPRESSING", unwrapped.get("to"))
             file.write(unwrapped.get("to"))
+        #print(unwrapped)
+        if unwrapped.find("body") is not None:
+            with open("/tmp/delorean-injection", "w") as file:
+                print("MESSAGE", unwrapped.find("body").text)
+                file.write(unwrapped.get("to") + "\x19" + unwrapped.find("body").text)
+    # ignore sent carbons resent by telepathy
+    message = root.find("message[@type='normal']")
+    if message and local:
+        message.clear()
+    # ignore <gone/> state, as injector generates it on every message when channel is closed
+    # TODO: ignore only when sent shortly after injection
+    message = root.find("message[gone]")
+    if message and local:
+        message.clear()
     # clear disco#items
     disco = root.find("iq[@type='result']/query[@xmlns='http://jabber.org/protocol/disco#items']")
     if disco and not local:
@@ -233,7 +247,6 @@ class Relay(Thread):
             newsock, address = self.sock.accept()
             logging.info('new session for %s %s' % address)
             context = ssl.create_default_context(purpose=ssl.Purpose.CLIENT_AUTH)
-            ###context.options = ssl.OP_NO_SSLv2 | ssl.OP_NO_SSLv3 | ssl.OP_CIPHER_SERVER_PREFERENCE | ssl.OP_SINGLE_DH_USE | ssl.OP_SINGLE_ECDH_USE
             #context.verify_mode = ssl.CERT_REQUIRED
             #context.check_hostname = True
             #context.load_default_certs()
@@ -255,6 +268,7 @@ if __name__ == '__main__':
 
     subprocess.Popen(["./delorean-suppressor"])
     subprocess.Popen(["./delorean-inactivity"])
+    subprocess.Popen(["./delorean-injector"])
 
     import sys
 

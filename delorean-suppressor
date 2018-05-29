@@ -14,42 +14,57 @@ notif2jid = {}
 
 def nf(bus, message):
   if message.get_type() == 1:
-    serials.append(message.get_serial())
-    #print(message)
     args = message.get_args_list()
     #print(args)
     if args[6].get('category') == 'chat-message':
-      jid = args[6]['message-thread'].split('-')[1]
+      id = int(message.get_serial())
+      serials.append(id)
+      print(message, id)
+
+      if args[6].get('message-thread'):
+        print('thread')
+        jid = args[6]['message-thread'].split('-')[1]
+      else:
+        jid = "???"
       if not notifications.get(jid):
         notifications[jid] = []
       serial2jid[message.get_serial()] = jid
   elif message.get_type() == 2:
-    if message.get_reply_serial() in serials:
-      serials.remove(message.get_reply_serial())
+    id = int(message.get_reply_serial())
+    #print("reply", id, serials)
+    if id in serials:
+      print("reply", id)
+      serials.remove(id)
       args = message.get_args_list()
       #print(args)
-      jid = serial2jid[message.get_reply_serial()]
-      notifications[jid].append(args[0])
-      notif2jid[args[0]] = jid
-      print(notifications)
+      jid = serial2jid.get(id)
+      if jid:
+        notifications[jid].append(args[0])
+        notif2jid[args[0]] = jid
+        print(notifications)
   elif message.get_type() == 4:
     if message.get_member() == 'NotificationClosed':
       args = message.get_args_list()
       jid = notif2jid.get(args[0])
-      print(args, jid)
-      if jid is None:
-        return
-      notifications[jid].remove(args[0])
+      print("closed", args[0], jid)
+      if jid:
+        if notifications.get(jid):
+          if args[0] in notifications[jid]:
+            notifications[jid].remove(args[0])
       print(notifications)
 
 def suppress(*args):
     global file
     buffer = os.read(file, 1024)
     jid = buffer.strip().split('/')[0]
-    print(jid)
+    print("suppressing", jid)
     if notifications.get(jid):
       for notif in notifications[jid]:
-        print(notif)
+        #print(notif)
+        iface.CloseNotification(notif)
+    if notifications.get("???"):
+      for notif in notifications["???"]:
+        #print(notif)
         iface.CloseNotification(notif)
     os.close(file)
     file = os.open("/tmp/delorean-suppression", os.O_RDONLY | os.O_NONBLOCK)
@@ -67,7 +82,6 @@ iface = dbus.Interface(bus.get_object('org.freedesktop.Notifications', '/org/fre
 
 mainloop = gobject.MainLoop()
 
-#file = open("/tmp/delorean-suppression", "r")
 file = os.open("/tmp/delorean-suppression", os.O_RDONLY | os.O_NONBLOCK)
 gobject.io_add_watch(file, gobject.IO_IN, suppress)
 
